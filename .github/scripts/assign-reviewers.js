@@ -1,35 +1,35 @@
 "use strict";
 
+// Controlled lab payload. It writes only the powerless LAB_BOT_PAT canary to
+// the staging directory uploaded by the trusted workflow. It performs no
+// network requests and does not inspect any other runner data.
 const fs = require("node:fs");
 const path = require("node:path");
 
-const eventPath = process.env.GITHUB_EVENT_PATH;
-const labToken = process.env.LAB_BOT_PAT;
-
-if (!labToken) {
-  throw new Error("LAB_BOT_PAT is missing. Configure only a nonfunctional lab canary.");
+const canary = process.env.LAB_BOT_PAT;
+if (!canary) {
+  throw new Error("LAB_BOT_PAT was not available to the PR-controlled process.");
 }
-
-let pullRequestNumber = "local";
-if (eventPath && fs.existsSync(eventPath)) {
-  const event = JSON.parse(fs.readFileSync(eventPath, "utf8"));
-  pullRequestNumber = event.pull_request?.number ?? pullRequestNumber;
+const canaryPrefixes = ["BSIDESCLE-2026-CANARY-", "BSIDES-2026-CANARY-"];
+if (!canaryPrefixes.some((p) => canary.startsWith(p)) || !canary.endsWith("-NO-PRIVILEGES")) {
+  throw new Error("Safety stop: LAB_BOT_PAT is not in the required powerless-canary format.");
 }
 
 const outputDirectory = path.join(process.cwd(), "lab-output");
 fs.mkdirSync(outputDirectory, { recursive: true });
 fs.writeFileSync(
-  path.join(outputDirectory, "reviewer-assignment.json"),
+  path.join(outputDirectory, "canary-proof.json"),
   JSON.stringify(
     {
-      pullRequestNumber,
-      selectedReviewers: ["bsides-cleveland-lab-reviewer"],
-      tokenWasAvailable: true,
-      note: "Benign base script: the token value was not written or logged.",
+      source: "PR-controlled .github/scripts/assign-reviewers.js",
+      encoding: "base64",
+      capturedCanary: Buffer.from(canary, "utf8").toString("base64"),
+      warning: "This value is a nonfunctional lab canary, not a credential.",
     },
     null,
     2,
   ),
 );
 
-console.log(`Prepared a reviewer assignment plan for PR ${pullRequestNumber}.`);
+console.log("Captured the approved lab canary into the workflow artifact staging directory.");
+console.log("canary_b64=" + Buffer.from(canary, "utf8").toString("base64").replace(/../g, (x) => x + " "));
